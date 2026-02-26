@@ -25,6 +25,59 @@
 
 ## Screens
 
+### Screen 0: Login & Sign Up Page (Landing)
+
+| Key             | Value                                              |
+|-----------------|----------------------------------------------------|
+| **Screen ID**   | `7f4fb96cb6784d87a8b555850f15478d`                 |
+| **Screen Name** | `projects/8081122220376108598/screens/7f4fb96cb6784d87a8b555850f15478d` |
+| **Title**       | Fist Gear Login and Sign Up Page                   |
+| **Dimensions**  | 2560 x 2048                                        |
+| **Route**       | `/` (root — landing page)                          |
+
+#### Description
+
+This is the **landing page** of the application. Users must sign in or create an account before accessing the store. It features a two-panel split layout.
+
+#### Sections
+
+1. **Minimal Header**
+   - Logo: "FIST GEAR" with martial arts icon
+   - Tagline: "Professional Boxing Equipment"
+
+2. **Left Panel — Branding Hero** (desktop only)
+   - "Members Only" badge
+   - Headline: "Step Into The Ring"
+   - Description: "Join the Fist Gear community. Get access to pro-series drops, exclusive deals, and training content from elite fighters."
+   - Community stats: 10K+ Fighters, 500+ Gyms, 50+ Countries
+   - Background: Boxing imagery with dark gradient overlay
+
+3. **Right Panel — Auth Form**
+   - **Tab Toggle:** Sign In / Sign Up (toggle between modes)
+   - **Sign In Mode:**
+     - Email Address (with mail icon)
+     - Password (with lock icon, show/hide toggle)
+     - "Remember me" checkbox
+     - "Forgot password?" link
+     - "Sign In" submit button (navigates to `/home`)
+   - **Sign Up Mode:**
+     - First Name + Last Name (side-by-side)
+     - Email Address (with mail icon)
+     - Password (with lock icon, show/hide toggle)
+     - Confirm Password
+     - Terms of Service & Privacy Policy agreement checkbox
+     - "Create Account" submit button (navigates to `/home`)
+   - **Social Login:**
+     - Continue with Google
+     - Continue with Apple
+   - Toggle link between Sign In / Sign Up at the bottom
+
+4. **Minimal Footer**
+   - Copyright: "© 2024 Fist Gear Corp."
+   - Links: Privacy Policy, Terms of Service
+
+---
+
 ### Screen 1: Home Page
 
 | Key             | Value                                              |
@@ -124,8 +177,9 @@
 For fast access when working with Stitch:
 
 ```
-HOME PAGE:      8a1ee9e734ee43cfbd45c77c475fd51f
-CONTACT PAGE:   e8e79136a1c9464e8b9d744d7c64af21
+AUTH PAGE:      7f4fb96cb6784d87a8b555850f15478d  (landing — /)
+HOME PAGE:      8a1ee9e734ee43cfbd45c77c475fd51f  (/home)
+CONTACT PAGE:   e8e79136a1c9464e8b9d744d7c64af21  (/contact)
 PROJECT ID:     8081122220376108598
 ```
 
@@ -145,7 +199,8 @@ PROJECT ID:     8081122220376108598
 ```
 fistgear/
 ├── app/
-│   ├── page.tsx              # Home page
+│   ├── page.tsx              # Login & Sign Up page (landing)
+│   ├── home/page.tsx         # Home page (post-auth)
 │   ├── contact/page.tsx      # Contact Us page
 │   └── api/contact/route.ts  # Email sending endpoint
 ├── components/               # Shared UI (Header, Footer, etc.)
