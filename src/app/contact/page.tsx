@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { authClient } from "@/lib/auth-client";
 
 function Icon({ name, className }: { name: string; className?: string }) {
   return (
@@ -20,6 +22,13 @@ const SUBJECT_OPTIONS = [
 ];
 
 export default function ContactPage() {
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    await authClient.signOut();
+    router.push("/");
+  };
+
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -102,6 +111,13 @@ export default function ContactPage() {
             <button className="flex min-w-21 cursor-pointer items-center justify-center rounded-lg h-10 px-4 bg-primary text-white text-sm font-bold hover:bg-primary-hover transition-colors">
               <Icon name="shopping_cart" className="mr-2 text-[20px]" />
               <span className="truncate italic uppercase">Cart</span>
+            </button>
+            <button
+              onClick={handleSignOut}
+              className="flex cursor-pointer items-center justify-center rounded-lg h-10 px-4 bg-surface text-foreground text-sm font-bold hover:bg-red-500/20 hover:text-red-400 transition-colors border border-border"
+            >
+              <Icon name="logout" className="mr-2 text-[20px]" />
+              <span className="truncate">Sign Out</span>
             </button>
           </div>
         </div>
