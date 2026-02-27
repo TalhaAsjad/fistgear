@@ -193,18 +193,54 @@ PROJECT ID:     8081122220376108598
 | **Language**     | TypeScript        | Type safety across form data, API routes, and email payloads              |
 | **Styling**      | Tailwind CSS      | Utility-first approach, easy dark theme + design token configuration      |
 | **Email Service**| Resend            | Simple API, free tier (100 emails/day), works natively with Next.js API routes |
+| **Auth**         | better-auth       | Full-featured auth library with email/password, social login, session management |
+| **Database**     | Neon (PostgreSQL) | Serverless Postgres — stores users, sessions, accounts, and verification data |
+| **ORM**          | Drizzle ORM       | Type-safe SQL queries, schema management, and migrations                  |
+
+### Authentication Architecture
+
+```
+User clicks "Sign Up" or "Sign In"
+        ↓
+auth-client.ts    →  Client-side helper (calls /api/auth/*)
+        ↓
+route.ts          →  API catch-all route (/api/auth/[...all])
+        ↓
+auth.ts           →  better-auth config (Drizzle adapter → Neon DB)
+        ↓
+schema.ts         →  Defines user, session, account, verification tables
+```
+
+**Key files:**
+
+| File | Purpose |
+|------|---------|
+| `src/lib/auth.ts` | Server-side better-auth config — connects to Neon via Drizzle, enables email/password auth |
+| `src/lib/auth-client.ts` | Client-side auth helper — provides `signUp.email()`, `signIn.email()`, `signOut()`, `useSession()` |
+| `src/app/api/auth/[...all]/route.ts` | Catch-all API route — forwards all `/api/auth/*` requests to better-auth |
+| `src/db/index.ts` | Drizzle database connection using `DATABASE_URL` from env |
+| `src/db/schema.ts` | Database schema — `user`, `session`, `account`, `verification` tables |
 
 ### Project Structure
 
 ```
 fistgear/
 ├── app/
-│   ├── page.tsx              # Login & Sign Up page (landing)
-│   ├── home/page.tsx         # Home page (post-auth)
-│   ├── contact/page.tsx      # Contact Us page
-│   └── api/contact/route.ts  # Email sending endpoint
-├── components/               # Shared UI (Header, Footer, etc.)
-├── tailwind.config.ts        # Design tokens from PRD
+│   ├── page.tsx                        # Login & Sign Up page (landing)
+│   ├── home/page.tsx                   # Home page (post-auth)
+│   ├── contact/page.tsx                # Contact Us page
+│   ├── api/
+│   │   ├── contact/route.ts            # Email sending endpoint
+│   │   └── auth/[...all]/route.ts      # Auth API catch-all route
+├── lib/
+│   ├── auth.ts                         # better-auth server config
+│   └── auth-client.ts                  # better-auth client helper
+├── db/
+│   ├── index.ts                        # Drizzle DB connection
+│   └── schema.ts                       # Database schema (user, session, etc.)
+├── components/                         # Shared UI (Header, Footer, etc.)
+├── drizzle.config.ts                   # Drizzle Kit config (migrations)
+├── tailwind.config.ts                  # Design tokens from PRD
 └── package.json
 ```
 

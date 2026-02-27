@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { authClient } from "@/lib/auth-client";
 
 function Icon({ name, className }: { name: string; className?: string }) {
   return (
@@ -12,8 +14,55 @@ function Icon({ name, className }: { name: string; className?: string }) {
 }
 
 export default function AuthPage() {
+  const router = useRouter();
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+
+    if (mode === "signup") {
+      if (password !== confirmPassword) {
+        setError("Passwords do not match.");
+        setLoading(false);
+        return;
+      }
+
+      const { error } = await authClient.signUp.email({
+        email,
+        password,
+        name: `${firstName} ${lastName}`.trim(),
+      });
+
+      if (error) {
+        setError(error.message ?? "Sign up failed.");
+        setLoading(false);
+        return;
+      }
+    } else {
+      const { error } = await authClient.signIn.email({
+        email,
+        password,
+      });
+
+      if (error) {
+        setError(error.message ?? "Sign in failed.");
+        setLoading(false);
+        return;
+      }
+    }
+
+    router.push("/home");
+  };
 
   return (
     <div className="bg-background text-foreground min-h-screen flex flex-col">
@@ -112,9 +161,15 @@ export default function AuthPage() {
               </p>
             </div>
 
+            {error && (
+              <div className="mb-2 rounded-lg bg-red-500/10 border border-red-500/30 px-4 py-3 text-sm text-red-400">
+                {error}
+              </div>
+            )}
+
             <form
               className="flex flex-col gap-5"
-              onSubmit={(e) => e.preventDefault()}
+              onSubmit={handleSubmit}
             >
               {/* Name fields — only for signup */}
               {mode === "signup" && (
@@ -126,6 +181,8 @@ export default function AuthPage() {
                     <input
                       type="text"
                       placeholder="Rocky"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
                       className="rounded-lg border border-border bg-primary/5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary h-11 px-4 outline-none transition-colors text-sm"
                     />
                   </label>
@@ -136,6 +193,8 @@ export default function AuthPage() {
                     <input
                       type="text"
                       placeholder="Balboa"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
                       className="rounded-lg border border-border bg-primary/5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary h-11 px-4 outline-none transition-colors text-sm"
                     />
                   </label>
@@ -153,6 +212,8 @@ export default function AuthPage() {
                   <input
                     type="email"
                     placeholder="champion@fistgear.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     className="rounded-lg border border-border bg-primary/5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary h-11 pl-10 pr-4 w-full outline-none transition-colors text-sm"
                   />
                 </div>
@@ -169,6 +230,8 @@ export default function AuthPage() {
                   <input
                     type={showPassword ? "text" : "password"}
                     placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     className="rounded-lg border border-border bg-primary/5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary h-11 pl-10 pr-11 w-full outline-none transition-colors text-sm"
                   />
                   <button
@@ -196,6 +259,8 @@ export default function AuthPage() {
                     <input
                       type="password"
                       placeholder="Confirm your password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
                       className="rounded-lg border border-border bg-primary/5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary h-11 pl-10 pr-4 w-full outline-none transition-colors text-sm"
                     />
                   </div>
@@ -239,18 +304,23 @@ export default function AuthPage() {
                 </label>
               )}
 
-              <Link href="/home">
-                <button
-                  type="submit"
-                  className="w-full bg-primary hover:bg-primary-hover text-white font-black italic uppercase py-3 rounded-lg transition-all flex items-center justify-center gap-2 group hover:scale-[1.02] cursor-pointer text-sm tracking-wider"
-                >
-                  {mode === "login" ? "Sign In" : "Create Account"}
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-primary hover:bg-primary-hover text-white font-black italic uppercase py-3 rounded-lg transition-all flex items-center justify-center gap-2 group hover:scale-[1.02] cursor-pointer text-sm tracking-wider disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              >
+                {loading
+                  ? "Please wait..."
+                  : mode === "login"
+                    ? "Sign In"
+                    : "Create Account"}
+                {!loading && (
                   <Icon
                     name="arrow_forward"
                     className="text-[18px] group-hover:translate-x-1 transition-transform"
                   />
-                </button>
-              </Link>
+                )}
+              </button>
             </form>
 
             {/* Divider */}
