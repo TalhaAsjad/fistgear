@@ -6,6 +6,7 @@ import {
   integer,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 
 // ---------------------------------------------------------------------------
 // better-auth tables (user, session, account, verification)
@@ -112,3 +113,29 @@ export const cartItem = pgTable(
     uniqueIndex("cart_item_user_variant_idx").on(table.userId, table.variantId),
   ]
 );
+
+// ---------------------------------------------------------------------------
+// Relations (Drizzle relational query API — no migration needed)
+// ---------------------------------------------------------------------------
+
+export const productRelations = relations(product, ({ many }) => ({
+  variants: many(productVariant),
+}));
+
+export const productVariantRelations = relations(productVariant, ({ one }) => ({
+  product: one(product, {
+    fields: [productVariant.productId],
+    references: [product.id],
+  }),
+}));
+
+export const cartItemRelations = relations(cartItem, ({ one }) => ({
+  user: one(user, {
+    fields: [cartItem.userId],
+    references: [user.id],
+  }),
+  variant: one(productVariant, {
+    fields: [cartItem.variantId],
+    references: [productVariant.id],
+  }),
+}));

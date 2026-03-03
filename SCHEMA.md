@@ -163,7 +163,7 @@ Base product record. Created and managed entirely through the admin UI at `/admi
 
 - Products are **never hard-deleted**. `is_active = false` hides them from `/shop`.
 - A product with zero variants exists in the DB but nothing is purchasable — admin sees a warning.
-- Customer shop query: `await db.select().from(product).where(eq(product.isActive, true))`
+- Customer shop query: `await db.query.product.findMany({ where: eq(product.isActive, true), with: { variants: true } })`
 
 ---
 
@@ -221,26 +221,17 @@ One row per unique (user + variant) combination. Represents what a customer has 
 
 **Cart load query:**
 
-Drizzle equivalent:
+Uses Drizzle's relational query API — relations are defined in `schema.ts`, so nested data is fetched with a single call:
 
 ```ts
-const cartItems = await db
-  .select({
-    id: cartItem.id,
-    quantity: cartItem.quantity,
-    size: productVariant.size,
-    color: productVariant.color,
-    price: productVariant.price,
-    stock: productVariant.stock,
-    variantImage: productVariant.imageUrl,
-    name: product.name,
-    productImage: product.imageUrl,
-    isActive: product.isActive,
-  })
-  .from(cartItem)
-  .innerJoin(productVariant, eq(cartItem.variantId, productVariant.id))
-  .innerJoin(product, eq(productVariant.productId, product.id))
-  .where(eq(cartItem.userId, userId));
+const cartItems = await db.query.cartItem.findMany({
+  where: eq(cartItem.userId, userId),
+  with: {
+    variant: {
+      with: { product: true },
+    },
+  },
+});
 ```
 
 **Validation on every cart page load:**
@@ -266,6 +257,28 @@ product_variant (1)
  └── cart_item (many)          product_variant.id = cart_item.variant_id
 
 verification (standalone)      used for email verification + admin invites
+```
+
+### Drizzle Relations
+
+Relations are defined at the bottom of `schema.ts` using Drizzle's `relations()` helper. These do **not** change the database — they enable the relational query API (`db.query.*.findMany({ with: { ... } })`), which generates optimized joins instead of N+1 queries.
+
+```ts
+// product → has many variants
+productRelations = relations(product, ({ many }) => ({
+  variants: many(productVariant),
+}));
+
+// variant → belongs to one product
+productVariantRelations = relations(productVariant, ({ one }) => ({
+  product: one(product, { fields: [productVariant.productId], references: [product.id] }),
+}));
+
+// cartItem → belongs to one user + one variant
+cartItemRelations = relations(cartItem, ({ one }) => ({
+  user: one(user, { fields: [cartItem.userId], references: [user.id] }),
+  variant: one(productVariant, { fields: [cartItem.variantId], references: [productVariant.id] }),
+}));
 ```
 
 ---

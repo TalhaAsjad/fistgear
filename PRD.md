@@ -332,7 +332,7 @@ Contact form with Resend email integration, HQ details.
 | **Email**        | Resend               | Contact form emails + admin invite emails                         |
 | **Auth**         | better-auth          | Email/password auth, session management, role support             |
 | **Database**     | Neon (PostgreSQL)    | Serverless Postgres — users, products, variants, cart, sessions   |
-| **ORM**          | Drizzle ORM          | Type-safe schema, migrations, queries                             |
+| **ORM**          | Drizzle ORM          | Type-safe schema, migrations, relational queries                  |
 | **File Storage** | Vercel Blob          | Product image uploads (free tier, 250MB)                          |
 
 ### Architecture
@@ -346,7 +346,7 @@ route.ts          →  /api/auth/[...all] catch-all
         ↓
 auth.ts           →  better-auth (Drizzle adapter → Neon)
         ↓
-schema.ts         →  user (role), product, product_variant, cart_item
+schema.ts         →  user (role), product, product_variant, cart_item + relations
         ↓
 middleware.ts      →  session + role check → /shop or /admin
 ```
@@ -388,7 +388,7 @@ fistgear/
 │   │   └── auth-client.ts                      # better-auth client helper
 │   ├── db/
 │   │   ├── index.ts                            # Drizzle DB connection
-│   │   └── schema.ts                           # All table definitions
+│   │   └── schema.ts                           # All table definitions + Drizzle relations
 │   └── middleware.ts                           # Auth + role-based routing
 ├── drizzle/                                    # Migration files
 ├── drizzle.config.ts

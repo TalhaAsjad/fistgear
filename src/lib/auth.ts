@@ -14,4 +14,14 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
+
+  // Expose the custom "role" column on session.user
+  user: {
+    additionalFields: {
+      role: {
+        type: "string",
+        defaultValue: "customer",
+      },
+    },
+  },
 });
