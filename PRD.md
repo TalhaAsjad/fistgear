@@ -44,7 +44,7 @@
   - Variant selector: size and color dropdowns (populated from `product_variant` rows)
   - Selected variant's price, stock status, and variant-specific image (if any)
   - "Add to Cart" button (disabled if out of stock)
-- Search: basic text search on product name/description via `ILIKE`
+- Search: basic text search on product name/description via Drizzle's `ilike()`
 
 ### 4. Product Variant Model
 
@@ -90,7 +90,7 @@
 
 - `UNIQUE(user_id, variant_id)` on the `cart_item` table
 - Enforced at the DB level — prevents duplicate rows from double-clicks, race conditions, or bugs
-- Application logic uses upsert (INSERT ON CONFLICT UPDATE quantity)
+- Application logic uses Drizzle's `onConflictDoUpdate` for upsert behavior
 
 #### Optimistic UI
 

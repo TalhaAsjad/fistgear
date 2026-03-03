@@ -19,11 +19,11 @@ middleware.ts checks for a valid session cookie
 
 The auth page has three tabs:
 
-| Tab | Who uses it | Redirects to |
-|-----|-------------|-------------|
-| Sign In | Returning customers | `/shop` |
-| Sign Up | New customers | `/shop` |
-| Admin Sign In | Admins only | `/admin` |
+| Tab           | Who uses it         | Redirects to |
+| ------------- | ------------------- | ------------ |
+| Sign In       | Returning customers | `/shop`      |
+| Sign Up       | New customers       | `/shop`      |
+| Admin Sign In | Admins only         | `/admin`     |
 
 ---
 
@@ -69,13 +69,14 @@ Redirect to /shop
 Customer lands on /shop
         ↓
 GET /api/products
-  → SELECT * FROM product WHERE is_active = true
-  → JOIN product_variant to get price range per product
+  → Drizzle:
+        await db.select().from(product).where(eq(product.isActive, true))
+        // + join productVariant for price range
         ↓
 Product grid renders:
   - Product cards (image, name, category, price range)
   - Category filter pills: All | Pro Series | Sparring | Bag Work
-  - Search bar (filters by name/description via ILIKE)
+  - Search bar (filters by name/description via Drizzle's ilike())
         ↓
 Customer clicks a product card
         ↓
@@ -102,12 +103,14 @@ POST /api/cart { variantId }
         ↓
   EXISTS:
     Check: current_quantity + 1 <= variant.stock?
-      YES → UPDATE cart_item SET quantity = quantity + 1
+      YES →
+        await db.update(cartItem).set({ quantity: sql`${cartItem.quantity} + 1` }).where(and(eq(cartItem.userId, userId), eq(cartItem.variantId, variantId)))
       NO  → return 400 "Only X left in stock"
         ↓
   NOT EXISTS:
     Check: variant.stock >= 1?
-      YES → INSERT cart_item (user_id, variant_id, quantity: 1)
+      YES →
+        await db.insert(cartItem).values({ userId, variantId, quantity: 1 })
       NO  → return 400 "Out of stock"
         ↓
   API SUCCESS → UI stays as-is (already updated optimistically)
@@ -122,11 +125,16 @@ Customer clicks cart icon
 Navigate to /shop/cart
         ↓
 GET /api/cart
-  → SELECT cart_item.*, product_variant.*, product.name, product.image_url, product.is_active
-    FROM cart_item
-    JOIN product_variant ON cart_item.variant_id = product_variant.id
-    JOIN product ON product_variant.product_id = product.id
-    WHERE cart_item.user_id = [current user]
+  → Drizzle:
+    await db.select({ id: cartItem.id, quantity: cartItem.quantity,
+      size: productVariant.size, color: productVariant.color,
+      price: productVariant.price, stock: productVariant.stock,
+      variantImage: productVariant.imageUrl, name: product.name,
+      productImage: product.imageUrl, isActive: product.isActive })
+      .from(cartItem)
+      .innerJoin(productVariant, eq(cartItem.variantId, productVariant.id))
+      .innerJoin(product, eq(productVariant.productId, product.id))
+      .where(eq(cartItem.userId, userId))
         ↓
 Cart page renders:
 
@@ -155,10 +163,12 @@ Customer clicks + or - on a cart item
 [BACKGROUND — async]
 PUT /api/cart/[id] { quantity: newQuantity }
   → Check: newQuantity <= variant.stock?
-    YES → UPDATE cart_item SET quantity = newQuantity
+    YES →
+      await db.update(cartItem).set({ quantity: newQuantity }).where(eq(cartItem.id, id))
     NO  → return 400
 
-  If newQuantity = 0 → DELETE cart_item row instead
+  If newQuantity = 0 →
+    await db.delete(cartItem).where(eq(cartItem.id, id))
         ↓
   API SUCCESS → no further action
   API FAILURE → roll back quantity to previous value, show error
@@ -175,7 +185,7 @@ Customer clicks trash/remove icon
         ↓
 [BACKGROUND — async]
 DELETE /api/cart/[id]
-  → DELETE FROM cart_item WHERE id = [id] AND user_id = [current user]
+  → await db.delete(cartItem).where(and(eq(cartItem.id, id), eq(cartItem.userId, userId)))
         ↓
   API SUCCESS → no further action
   API FAILURE → row reappears, show error
@@ -203,7 +213,7 @@ Redirect to /
 Admin signs up as a normal customer via Sign Up tab
         ↓
 In the database (Neon console or seed script):
-  UPDATE "user" SET role = 'admin' WHERE email = 'admin@fistgear.com';
+  await db.update(user).set({ role: "admin" }).where(eq(user.email, "admin@fistgear.com"))
         ↓
 Admin signs out, then uses "Admin Sign In" tab
         ↓
@@ -231,9 +241,9 @@ middleware reads role:
 Admin lands on /admin
         ↓
 Dashboard fetches:
-  - Total products (COUNT from product)
-  - Active products (COUNT WHERE is_active = true)
-  - Low stock items (COUNT WHERE stock < 5 from product_variant)
+  - Total products: db.select({ count: count() }).from(product)
+  - Active products: db.select({ count: count() }).from(product).where(eq(product.isActive, true))
+  - Low stock items: db.select({ count: count() }).from(productVariant).where(lt(productVariant.stock, 5))
         ↓
 Renders:
   - Stat cards
@@ -259,7 +269,7 @@ Add Product form opens:
 Admin clicks "Save Product"
         ↓
 POST /api/products { name, description, category, brand, image_url, is_active }
-  → INSERT INTO product (...) RETURNING id
+  → await db.insert(product).values({ name, description, category, brand, imageUrl, isActive }).returning({ id: product.id })
         ↓
 Admin is taken to variant management for that product
         ↓
@@ -284,7 +294,7 @@ Variant form row appears:
 Admin clicks "Save Variant"
         ↓
 POST /api/products/[id]/variants { size, color, price (→ cents), stock, weight, image_url }
-  → INSERT INTO product_variant (...)
+  → await db.insert(productVariant).values({ productId: id, size, color, price, stock, weight, imageUrl })
         ↓
 Variant appears in the list below the product form
 Admin repeats for each size/color combination
@@ -303,7 +313,7 @@ Variant list shows all existing variants with Edit/Delete per row
 Admin changes any field → clicks "Save"
         ↓
 PUT /api/products/[id] { updated fields }
-  → UPDATE product SET ... WHERE id = [id]
+  → await db.update(product).set({ ...updatedFields }).where(eq(product.id, id))
         ↓
 Changes are live on /shop immediately
 ```
@@ -315,7 +325,7 @@ Variant fields become editable inline
 Admin changes price, stock, etc. → clicks "Save"
         ↓
 PUT /api/products/[id]/variants/[variantId] { updated fields }
-  → UPDATE product_variant SET ... WHERE id = [variantId]
+  → await db.update(productVariant).set({ ...updatedFields }).where(eq(productVariant.id, variantId))
         ↓
 Price/stock changes visible to customers on next page load
 ```
@@ -326,9 +336,9 @@ Price/stock changes visible to customers on next page load
 Admin clicks "Deactivate" on a product row
         ↓
 PUT /api/products/[id] { is_active: false }
-  → UPDATE product SET is_active = false WHERE id = [id]
+  → await db.update(product).set({ isActive: false }).where(eq(product.id, id))
         ↓
-Product immediately disappears from /shop (GET /api/products filters WHERE is_active = true)
+Product immediately disappears from /shop (GET /api/products filters where eq(product.isActive, true))
         ↓
 Customers who have this product in their cart:
   → On next cart load: item appears greyed out, "This item is no longer available"
@@ -345,7 +355,7 @@ Admin clicks "Delete" on a product row
 Confirmation prompt: "Are you sure? This cannot be undone from the UI."
         ↓
 DELETE /api/products/[id]
-  → UPDATE product SET is_active = false WHERE id = [id]
+  → await db.update(product).set({ isActive: false }).where(eq(product.id, id))
   [Soft delete — never hard-deletes to preserve cart_item integrity]
         ↓
 Product moves to "Inactive" status in admin table
@@ -361,7 +371,7 @@ Enters email address → clicks "Send Invite"
         ↓
 POST /api/admin/invite { email }
   → Generate unique token (crypto.randomUUID())
-  → INSERT INTO verification (identifier: email, value: token, expires_at: now + 48h)
+  → await db.insert(verification).values({ identifier: email, value: token, expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000) })
   → Send email via Resend:
       To: [invited email]
       Subject: "You've been invited to manage Fist Gear"
@@ -384,24 +394,24 @@ Invitee clicks email link
 The key insight: **admin creates, customer consumes**. They share the same database tables.
 
 ```
-Admin actions                        Customer sees
-─────────────────────────────────────────────────────
-INSERT INTO product              →   Product appears on /shop
-UPDATE product SET is_active=true →  Product becomes visible
-UPDATE product SET is_active=false → Product disappears from /shop
-INSERT INTO product_variant      →   Variant appears in dropdown
-UPDATE product_variant SET stock →   Stock shows "X in stock" or "Out of stock"
-UPDATE product_variant SET price →   New price shows on next customer page load
+Admin actions                                                              Customer sees
+───────────────────────────────────────────────────────────────────────────────────────────
+db.insert(product).values(...)                                          →  Product appears on /shop
+db.update(product).set({ isActive: true }).where(...)                   →  Product becomes visible
+db.update(product).set({ isActive: false }).where(...)                  →  Product disappears from /shop
+db.insert(productVariant).values(...)                                   →  Variant appears in dropdown
+db.update(productVariant).set({ stock }).where(...)                     →  Stock shows "X in stock" or "Out of stock"
+db.update(productVariant).set({ price }).where(...)                     →  New price shows on next customer page load
 ```
 
 ```
 Customer actions                     Stored in DB
 ─────────────────────────────────────────────────────
-Add to cart                      →   INSERT/UPDATE cart_item
-Change quantity                  →   UPDATE cart_item
-Remove item                      →   DELETE cart_item
-Sign out                         →   DELETE session (cart_item rows persist)
-Sign in again (any device)       →   Same cart_item rows loaded → cart restored
+Add to cart                      →   db.insert(cartItem) / db.update(cartItem)
+Change quantity                  →   db.update(cartItem).set({ quantity })
+Remove item                      →   db.delete(cartItem)
+Sign out                         →   Session deleted (cartItem rows persist)
+Sign in again (any device)       →   Same cartItem rows loaded → cart restored
 ```
 
 ---
@@ -476,16 +486,16 @@ Both:
 
 ## 7. Key Files Reference
 
-| File | Role in flow |
-|------|-------------|
-| [src/middleware.ts](src/middleware.ts) | Checks session + role on every request, enforces route access |
-| [src/lib/auth.ts](src/lib/auth.ts) | better-auth server config — DB connection, email/password enabled |
-| [src/lib/auth-client.ts](src/lib/auth-client.ts) | Client-side: signIn, signUp, signOut, useSession |
-| [src/db/schema.ts](src/db/schema.ts) | All table definitions: user, session, account, verification, product, product_variant, cart_item |
-| [src/app/page.tsx](src/app/page.tsx) | Auth page UI — Sign In / Sign Up / Admin Sign In tabs |
-| [src/app/shop/page.tsx](src/app/shop/page.tsx) | Customer product catalog |
-| [src/app/shop/cart/page.tsx](src/app/shop/cart/page.tsx) | Customer shopping cart |
-| [src/app/admin/page.tsx](src/app/admin/page.tsx) | Admin dashboard |
-| [src/app/admin/products/page.tsx](src/app/admin/products/page.tsx) | Admin product + variant management |
-| [src/app/api/products/route.ts](src/app/api/products/route.ts) | Products API (list, create) |
-| [src/app/api/cart/route.ts](src/app/api/cart/route.ts) | Cart API (list, add with stock check) |
+| File                                                               | Role in flow                                                                                     |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| [src/middleware.ts](src/middleware.ts)                             | Checks session + role on every request, enforces route access                                    |
+| [src/lib/auth.ts](src/lib/auth.ts)                                 | better-auth server config — DB connection, email/password enabled                                |
+| [src/lib/auth-client.ts](src/lib/auth-client.ts)                   | Client-side: signIn, signUp, signOut, useSession                                                 |
+| [src/db/schema.ts](src/db/schema.ts)                               | All table definitions: user, session, account, verification, product, product_variant, cart_item |
+| [src/app/page.tsx](src/app/page.tsx)                               | Auth page UI — Sign In / Sign Up / Admin Sign In tabs                                            |
+| [src/app/shop/page.tsx](src/app/shop/page.tsx)                     | Customer product catalog                                                                         |
+| [src/app/shop/cart/page.tsx](src/app/shop/cart/page.tsx)           | Customer shopping cart                                                                           |
+| [src/app/admin/page.tsx](src/app/admin/page.tsx)                   | Admin dashboard                                                                                  |
+| [src/app/admin/products/page.tsx](src/app/admin/products/page.tsx) | Admin product + variant management                                                               |
+| [src/app/api/products/route.ts](src/app/api/products/route.ts)     | Products API (list, create)                                                                      |
+| [src/app/api/cart/route.ts](src/app/api/cart/route.ts)             | Cart API (list, add with stock check)                                                            |
