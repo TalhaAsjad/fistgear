@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { product } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { createProductSchema } from "@/lib/validations";
 
 // GET /api/products — list all active products with their variants
 export async function GET() {
@@ -38,25 +39,22 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { name, description, category, brand, imageUrl } = body;
+    const parsed = createProductSchema.safeParse(body);
 
-    if (!name || !category) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "Name and category are required." },
+        { error: parsed.error.issues[0].message },
         { status: 400 }
       );
     }
 
-    const newProduct = {
-      id: crypto.randomUUID(),
-      name,
-      description: description || null,
-      category,
-      brand: brand || null,
-      imageUrl: imageUrl || null,
-    };
-
-    const [created] = await db.insert(product).values(newProduct).returning();
+    const [created] = await db
+      .insert(product)
+      .values({
+        id: crypto.randomUUID(),
+        ...parsed.data,
+      })
+      .returning();
 
     return NextResponse.json(created, { status: 201 });
   } catch (error) {

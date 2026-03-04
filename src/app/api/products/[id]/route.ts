@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { product } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { updateProductSchema } from "@/lib/validations";
 
 // GET /api/products/[id] — single product with its variants
 export async function GET(
@@ -54,16 +55,19 @@ export async function PUT(
 
     const { id } = await params;
     const body = await request.json();
+    const parsed = updateProductSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0].message },
+        { status: 400 }
+      );
+    }
 
     const [updated] = await db
       .update(product)
       .set({
-        name: body.name,
-        description: body.description,
-        category: body.category,
-        brand: body.brand,
-        imageUrl: body.imageUrl,
-        isActive: body.isActive,
+        ...parsed.data,
         updatedAt: new Date(),
       })
       .where(eq(product.id, id))
