@@ -99,20 +99,23 @@ Customer selects variant and clicks "Add to Cart"
         ↓
 [BACKGROUND — async]
 POST /api/cart { variantId }
-  → Check: does cart_item (user_id + variant_id) already exist?
+  → Zod validates body with addToCartSchema
+        ↓
+  db.transaction with FOR UPDATE locking:
+    1. Lock variant row:    SELECT ... FROM product_variant WHERE id = variantId FOR UPDATE
+    2. Lock cart item row:  SELECT ... FROM cart_item WHERE user_id + variant_id FOR UPDATE
         ↓
   EXISTS:
     Check: current_quantity + 1 <= variant.stock?
-      YES →
-        await db.update(cartItem).set({ quantity: sql`${cartItem.quantity} + 1` }).where(and(eq(cartItem.userId, userId), eq(cartItem.variantId, variantId)))
-      NO  → return 400 "Only X left in stock"
+      YES → tx.update(cartItem).set({ quantity: existing.quantity + 1 })
+      NO  → return 400 "Insufficient stock."
         ↓
   NOT EXISTS:
     Check: variant.stock >= 1?
-      YES →
-        await db.insert(cartItem).values({ userId, variantId, quantity: 1 })
-      NO  → return 400 "Out of stock"
+      YES → tx.insert(cartItem).values({ userId, variantId, quantity: 1 })
+      NO  → return 400 "Out of stock."
         ↓
+  Transaction commits → locks released
   API SUCCESS → UI stays as-is (already updated optimistically)
   API FAILURE → roll back badge count, show error toast
 ```
@@ -162,14 +165,17 @@ Customer clicks + or - on a cart item
         ↓
 [BACKGROUND — async]
 PUT /api/cart/[id] { quantity: newQuantity }
-  → Check: newQuantity <= variant.stock?
-    YES →
-      await db.update(cartItem).set({ quantity: newQuantity }).where(eq(cartItem.id, id))
-    NO  → return 400
-
-  If newQuantity = 0 →
-    await db.delete(cartItem).where(eq(cartItem.id, id))
+  → Zod validates body with updateCartItemSchema (min 1)
         ↓
+  db.transaction with FOR UPDATE locking:
+    1. Lock cart item row: SELECT ... FROM cart_item WHERE id + user_id FOR UPDATE
+       (compound where ensures ownership — prevents cross-user manipulation)
+    2. Lock variant row:   SELECT ... FROM product_variant WHERE id = variantId FOR UPDATE
+    3. Check: newQuantity <= variant.stock?
+       YES → tx.update(cartItem).set({ quantity: newQuantity })
+       NO  → return 400 "Insufficient stock."
+        ↓
+  Transaction commits → locks released
   API SUCCESS → no further action
   API FAILURE → roll back quantity to previous value, show error
 ```
@@ -185,6 +191,7 @@ Customer clicks trash/remove icon
         ↓
 [BACKGROUND — async]
 DELETE /api/cart/[id]
+  → Ownership check via compound where: cart_item.id + cart_item.user_id
   → await db.delete(cartItem).where(and(eq(cartItem.id, id), eq(cartItem.userId, userId)))
         ↓
   API SUCCESS → no further action
@@ -497,5 +504,7 @@ Both:
 | [src/app/shop/cart/page.tsx](src/app/shop/cart/page.tsx)           | Customer shopping cart                                                                           |
 | [src/app/admin/page.tsx](src/app/admin/page.tsx)                   | Admin dashboard                                                                                  |
 | [src/app/admin/products/page.tsx](src/app/admin/products/page.tsx) | Admin product + variant management                                                               |
+| [src/lib/validations.ts](src/lib/validations.ts)                   | Zod schemas for product, variant, and cart input                                                 |
 | [src/app/api/products/route.ts](src/app/api/products/route.ts)     | Products API (list, create)                                                                      |
-| [src/app/api/cart/route.ts](src/app/api/cart/route.ts)             | Cart API (list, add with stock check)                                                            |
+| [src/app/api/cart/route.ts](src/app/api/cart/route.ts)             | Cart API (GET list, POST add with transactional stock check)                                     |
+| [src/app/api/cart/[id]/route.ts](src/app/api/cart/[id]/route.ts)   | Cart item API (PUT update quantity, DELETE remove)                                               |

@@ -48,3 +48,15 @@ export const updateVariantSchema = z.object({
   weight: z.number().int().nonnegative().nullish(),
   imageUrl: z.url("Invalid image URL.").nullish(),
 });
+
+// ---------------------------------------------------------------------------
+// Cart schemas
+// ---------------------------------------------------------------------------
+
+export const addToCartSchema = z.object({
+  variantId: z.string().min(1, "Variant ID is required."),
+});
+
+export const updateCartItemSchema = z.object({
+  quantity: z.number().int().min(1, "Quantity must be at least 1."),
+});

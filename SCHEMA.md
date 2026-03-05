@@ -13,6 +13,7 @@ Fist Gear uses **PostgreSQL** as its database, **Drizzle ORM** for schema defini
 | Database     | PostgreSQL  | Stores all app data                       |
 | ORM          | Drizzle ORM | Schema definition, migrations, queries    |
 | Auth Library | better-auth | Signup, login, sessions, password hashing |
+| Validation   | Zod         | Runtime input validation on mutation APIs |
 
 ---
 
@@ -242,6 +243,75 @@ const cartItems = await db.query.cartItem.findMany({
 
 ---
 
+## Validation Schemas (Zod)
+
+All mutation API endpoints (POST and PUT) validate the request body before touching the database. Schemas are defined in `src/lib/validations.ts` and use Zod's `.safeParse()`. Invalid input returns `400` with the first error message.
+
+### Product validation
+
+| Field         | Create       | Update       | Rules                                            |
+| ------------- | ------------ | ------------ | ------------------------------------------------ |
+| `name`        | required     | required     | Non-empty string                                 |
+| `description` | optional     | optional     | String or null                                   |
+| `category`    | required     | required     | Enum: `"pro-series"`, `"sparring"`, `"bag-work"` |
+| `brand`       | optional     | optional     | String or null                                   |
+| `imageUrl`    | optional     | optional     | Valid URL or null                                 |
+| `isActive`    | —            | required     | Boolean                                          |
+
+### Variant validation
+
+| Field      | Create       | Update       | Rules                                 |
+| ---------- | ------------ | ------------ | ------------------------------------- |
+| `size`     | optional     | optional     | String or null                        |
+| `color`    | optional     | optional     | String or null                        |
+| `price`    | required     | required     | Non-negative integer (cents)          |
+| `stock`    | required     | required     | Non-negative integer (default 0)      |
+| `weight`   | optional     | optional     | Non-negative integer (grams) or null  |
+| `imageUrl` | optional     | optional     | Valid URL or null                      |
+
+### Cart validation
+
+| Field      | Add to Cart  | Update Quantity | Rules                             |
+| ---------- | ------------ | --------------- | --------------------------------- |
+| `variantId`| required     | —               | Non-empty string                  |
+| `quantity` | —            | required        | Positive integer (min 1)          |
+
+### Ownership checks
+
+**Variant ownership:** PUT and DELETE endpoints use a compound where clause:
+
+```ts
+.where(and(eq(productVariant.id, variantId), eq(productVariant.productId, id)))
+```
+
+This ensures the variant belongs to the product specified in the URL — prevents cross-product variant manipulation.
+
+**Cart item ownership:** PUT and DELETE endpoints use a compound where clause:
+
+```ts
+.where(and(eq(cartItem.id, id), eq(cartItem.userId, session.user.id)))
+```
+
+This ensures the cart item belongs to the authenticated user — prevents cross-user cart manipulation.
+
+### Concurrency safety
+
+Cart POST and PUT endpoints wrap all reads and writes in a PostgreSQL transaction with `FOR UPDATE` row locking:
+
+```ts
+const result = await db.transaction(async (tx) => {
+  const [variant] = await tx.select().from(productVariant)
+    .where(eq(productVariant.id, variantId)).for("update");
+  const [existing] = await tx.select().from(cartItem)
+    .where(and(eq(cartItem.userId, userId), eq(cartItem.variantId, variantId))).for("update");
+  // ... stock check + insert/update
+});
+```
+
+The `FOR UPDATE` lock blocks concurrent transactions from reading the same rows until the current transaction commits — prevents two requests from both passing the stock check and overselling.
+
+---
+
 ## Relationships
 
 ```
@@ -341,9 +411,12 @@ Migration files are stored in `/drizzle/`. Config in [drizzle.config.ts](drizzle
 
 ## File Reference
 
-| File                                   | Purpose                          |
-| -------------------------------------- | -------------------------------- |
-| [src/db/schema.ts](src/db/schema.ts)   | All Drizzle table definitions    |
-| [src/db/index.ts](src/db/index.ts)     | Database connection (pg Pool)    |
-| [drizzle.config.ts](drizzle.config.ts) | Drizzle Kit config (migrations)  |
-| `.env.local`                           | `DATABASE_URL` connection string |
+| File                                               | Purpose                                    |
+| -------------------------------------------------- | ------------------------------------------ |
+| [src/db/schema.ts](src/db/schema.ts)               | All Drizzle table definitions              |
+| [src/db/index.ts](src/db/index.ts)                 | Database connection (pg Pool)              |
+| [src/lib/validations.ts](src/lib/validations.ts)   | Zod schemas for product, variant, and cart |
+| [src/app/api/cart/route.ts](src/app/api/cart/route.ts)           | GET / POST cart                |
+| [src/app/api/cart/[id]/route.ts](src/app/api/cart/[id]/route.ts) | PUT / DELETE cart item          |
+| [drizzle.config.ts](drizzle.config.ts)             | Drizzle Kit config (migrations)            |
+| `.env.local`                                       | `DATABASE_URL` connection string           |

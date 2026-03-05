@@ -305,6 +305,12 @@ Contact form with Resend email integration, HQ details.
 | PUT    | `/api/products/[id]/variants/[variantId]`     | Admin  | Update variant   |
 | DELETE | `/api/products/[id]/variants/[variantId]`     | Admin  | Delete variant   |
 
+**Input validation:** All POST and PUT endpoints validate the request body with Zod (`.safeParse()`). Invalid input returns `400` with the first validation error message. Schemas are defined in `src/lib/validations.ts`.
+
+**Concurrency safety:** Cart POST and PUT endpoints use PostgreSQL transactions with `FOR UPDATE` row locking. This prevents race conditions where two concurrent requests could both read the same stock value and both succeed — the lock forces serialized access to the variant and cart item rows within each transaction.
+
+**Variant ownership:** PUT and DELETE on variants use a compound where clause (`variant.id + variant.product_id`) to ensure the variant belongs to the specified product.
+
 ### Cart API
 
 | Method | Path             | Access   | Description                         |
@@ -313,6 +319,8 @@ Contact form with Resend email integration, HQ details.
 | POST   | `/api/cart`      | Customer | Add item (upsert + stock check)    |
 | PUT    | `/api/cart/[id]` | Customer | Update quantity (+ stock check)    |
 | DELETE | `/api/cart/[id]` | Customer | Remove item from cart              |
+
+**Cart ownership:** PUT and DELETE on cart items use a compound where clause (`cart_item.id + cart_item.user_id`) to ensure the item belongs to the authenticated user — prevents cross-user cart manipulation.
 
 ### Admin Invite API
 
@@ -332,6 +340,7 @@ Contact form with Resend email integration, HQ details.
 | **Email**        | Resend               | Contact form emails + admin invite emails                         |
 | **Auth**         | better-auth          | Email/password auth, session management, role support             |
 | **Database**     | Neon (PostgreSQL)    | Serverless Postgres — users, products, variants, cart, sessions   |
+| **Validation**   | Zod                  | Runtime input validation on all mutation API routes               |
 | **ORM**          | Drizzle ORM          | Type-safe schema, migrations, relational queries                  |
 | **File Storage** | Vercel Blob          | Product image uploads (free tier, 250MB)                          |
 
@@ -345,6 +354,8 @@ auth-client.ts    →  signIn / signUp (calls /api/auth/*)
 route.ts          →  /api/auth/[...all] catch-all
         ↓
 auth.ts           →  better-auth (Drizzle adapter → Neon)
+        ↓
+validations.ts    →  Zod .safeParse() on all mutation request bodies
         ↓
 schema.ts         →  user (role), product, product_variant, cart_item + relations
         ↓
@@ -385,7 +396,8 @@ fistgear/
 │   │           └── invite/route.ts             # POST admin invite
 │   ├── lib/
 │   │   ├── auth.ts                             # better-auth server config
-│   │   └── auth-client.ts                      # better-auth client helper
+│   │   ├── auth-client.ts                      # better-auth client helper
+│   │   └── validations.ts                      # Zod schemas for product, variant, and cart input
 │   ├── db/
 │   │   ├── index.ts                            # Drizzle DB connection
 │   │   └── schema.ts                           # All table definitions + Drizzle relations
